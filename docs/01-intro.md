@@ -120,14 +120,3 @@ In the next step, I’ll:
 → [Go to Chapter 02 – Creating a Raw SQLite User Table](02-db.md)
 
 
----
-
-### ✅ To use it:
-
-Save this as `docs/01-setup.md`  
-Then commit and push it:
-
-```bash
-git add docs/01-setup.md
-git commit -m "Documented initial project setup"
-git push
