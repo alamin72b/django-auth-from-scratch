@@ -3,30 +3,32 @@ from django.http import HttpResponseRedirect
 from .helpers import get_authenticated_user,create_session,SESSION_DURATION_MINUTES,PERSISTENT_SESSION_DURATION_DAYS
 import bcrypt
 from .db import get_connection
+from .helpers import is_valid_password
 
 
 def register_view(request):
-    """
-    Handles user registration.
-
-    - On GET: Renders the registration form.
-    - On POST: Validates and registers a new user.
-    """
     if request.method == 'POST':
-        # Extract and sanitize input
         username = request.POST.get('username', '').strip()
         email = request.POST.get('email', '').strip()
         password = request.POST.get('password', '')
+        confirm_password = request.POST.get('confirm_password', '')
 
-        # Basic validation
-        if not username or not email or not password:
+        if not username or not email or not password or not confirm_password:
             return render(request, 'register.html', {'error': 'All fields are required'})
 
-        # Hash the password using bcrypt
+        # Check if passwords match
+        if password != confirm_password:
+            return render(request, 'register.html', {'error': 'Passwords do not match'})
+
+        # Password validation
+        valid, message = is_valid_password(password)
+        if not valid:
+            return render(request, 'register.html', {'error': message})
+
+        # Hash password and insert user (rest of your existing code)
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
         try:
-            # Insert new user into the database
             with get_connection() as conn:
                 cur = conn.cursor()
                 cur.execute("""
@@ -36,13 +38,10 @@ def register_view(request):
                 conn.commit()
             return render(request, 'register.html', {'success': '✅ User registered successfully!'})
         except Exception as e:
-            # Handle duplicate username/email
             if 'UNIQUE constraint failed' in str(e):
                 return render(request, 'register.html', {'error': 'Username or email already taken'})
-            # Handle other DB-related errors
             return render(request, 'register.html', {'error': f'Error: {str(e)}'})
 
-    # Render registration form on GET
     return render(request, 'register.html')
 
 
@@ -84,9 +83,11 @@ def login_view(request):
             'session_token',
             session_token,
             httponly=True,
-            secure=False,  # Set to True on HTTPS production
+            secure=True,  # Use True in production with HTTPS
+            samesite='Lax',
             max_age=max_age_seconds,
         )
+
 
         return response
 

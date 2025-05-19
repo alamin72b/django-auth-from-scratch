@@ -1,6 +1,7 @@
 import secrets
 from datetime import datetime, timedelta
 from .db import get_connection
+import re
 
 SESSION_DURATION_MINUTES = 60
 PERSISTENT_SESSION_DURATION_DAYS = 7
@@ -77,3 +78,16 @@ def get_authenticated_user(request):
     except Exception as e:
         print(f"[get_authenticated_user] Exception occurred: {e}")
         return None
+
+
+
+
+
+def is_valid_password(password):
+    if len(password) < 8:
+        return False, "Password must be at least 8 characters long."
+    if not re.search(r'[A-Za-z]', password):
+        return False, "Password must contain at least one letter."
+    if not re.search(r'\d', password):
+        return False, "Password must contain at least one digit."
+    return True, ""
