@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect
 from django.http import HttpResponseRedirect
-from .helpers import get_authenticated_user,create_session,SESSION_DURATION_MINUTES
+from .helpers import get_authenticated_user,create_session,SESSION_DURATION_MINUTES,PERSISTENT_SESSION_DURATION_DAYS
 import bcrypt
 from .db import get_connection
 
@@ -46,15 +46,14 @@ def register_view(request):
     return render(request, 'register.html')
 
 
-
 def login_view(request):
     if get_authenticated_user(request):
         return redirect('/home/')
 
-
     if request.method == 'POST':
         identifier = request.POST.get('identifier', '').strip()
         password = request.POST.get('password', '')
+        remember_me = request.POST.get('remember_me') == 'on'
 
         if not identifier or not password:
             return render(request, 'login.html', {'error': 'All fields are required'})
@@ -75,20 +74,23 @@ def login_view(request):
         if not bcrypt.checkpw(password.encode(), password_hash.encode()):
             return render(request, 'login.html', {'error': 'Incorrect password'})
 
-        session_token = create_session(user_id)
+        session_token = create_session(user_id, persistent=remember_me)
 
         response = redirect('/home/')
+
+        max_age_seconds = (PERSISTENT_SESSION_DURATION_DAYS * 24 * 60 * 60) if remember_me else (SESSION_DURATION_MINUTES * 60)
+
         response.set_cookie(
-            'session_token', 
+            'session_token',
             session_token,
             httponly=True,
-            secure=False,  # Set True if using HTTPS in production
-            max_age=SESSION_DURATION_MINUTES * 60
+            secure=False,  # Set to True on HTTPS production
+            max_age=max_age_seconds,
         )
+
         return response
 
     return render(request, 'login.html')
-
 
 def logout_view(request):
     session_token = request.COOKIES.get('session_token')

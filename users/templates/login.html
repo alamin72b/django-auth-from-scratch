@@ -5,22 +5,23 @@
     <h1>Login</h1>
     <form method="POST">
         {% csrf_token %}
-
+        
         <label>Username or Email:</label><br>
         <input type="text" name="identifier" required><br><br>
-
+    
         <label>Password:</label><br>
         <input type="password" name="password" required><br><br>
-
+    
+        <label>
+          <input type="checkbox" name="remember_me"> Remember Me
+        </label><br><br>
+    
         <button type="submit">Login</button>
+    
+        {% if error %}
+            <p style="color: red;">{{ error }}</p>
+        {% endif %}
     </form>
-
-    {% if error %}
-        <p style="color: red;">{{ error }}</p>
-    {% endif %}
-
-    {% if success %}
-        <p style="color: green;">{{ success }}</p>
-    {% endif %}
+    
 </body>
 </html>

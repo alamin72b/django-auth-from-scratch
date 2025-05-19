@@ -58,3 +58,15 @@ def initialize_sessions_table():
             )
         """)
         conn.commit()
+
+
+def add_is_persistent_column():
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # Add the column if it doesn't exist (SQLite doesn’t support IF NOT EXISTS for ALTER TABLE, so be cautious)
+        try:
+            cur.execute("ALTER TABLE sessions ADD COLUMN is_persistent INTEGER DEFAULT 0")
+            conn.commit()
+            print("Added is_persistent column to sessions table.")
+        except Exception as e:
+            print("Column might already exist or error:", e)
