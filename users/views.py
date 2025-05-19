@@ -1,8 +1,9 @@
 from django.shortcuts import render, redirect
 from django.http import HttpResponseRedirect
-from .helpers import get_authenticated_user
+from .helpers import get_authenticated_user,create_session,SESSION_DURATION_MINUTES
 import bcrypt
 from .db import get_connection
+
 
 def register_view(request):
     """
@@ -45,27 +46,19 @@ def register_view(request):
     return render(request, 'register.html')
 
 
-def login_view(request):
-    """
-    Handles user login.
 
-    - Redirects to home if already authenticated.
-    - On POST: Authenticates user credentials.
-    - On success: Sets cookies and redirects to home.
-    """
-    # Prevent logged-in users from accessing the login page
-    if request.COOKIES.get('user_id'):
+def login_view(request):
+    if get_authenticated_user(request):
         return redirect('/home/')
 
+
     if request.method == 'POST':
-        identifier = request.POST.get('identifier', '').strip()  # Can be username or email
+        identifier = request.POST.get('identifier', '').strip()
         password = request.POST.get('password', '')
 
-        # Basic validation
         if not identifier or not password:
             return render(request, 'login.html', {'error': 'All fields are required'})
 
-        # Fetch user by username or email
         with get_connection() as conn:
             cur = conn.cursor()
             cur.execute("""
@@ -74,35 +67,42 @@ def login_view(request):
             """, (identifier, identifier))
             row = cur.fetchone()
 
-        # User not found
         if not row:
             return render(request, 'login.html', {'error': 'User not found'})
 
         user_id, username, password_hash = row
 
-        # Password verification
         if not bcrypt.checkpw(password.encode(), password_hash.encode()):
             return render(request, 'login.html', {'error': 'Incorrect password'})
 
-        # Successful login: Set cookies and redirect to home
+        session_token = create_session(user_id)
+
         response = redirect('/home/')
-        response.set_cookie('user_id', str(user_id))
-        response.set_cookie('username', username)
+        response.set_cookie(
+            'session_token', 
+            session_token,
+            httponly=True,
+            secure=False,  # Set True if using HTTPS in production
+            max_age=SESSION_DURATION_MINUTES * 60
+        )
         return response
 
-    # Render login form on GET
     return render(request, 'login.html')
 
 
 def logout_view(request):
-    """
-    Logs out the user by clearing cookies and redirecting to the login page.
-    """
+    session_token = request.COOKIES.get('session_token')
     response = HttpResponseRedirect('/login/')
-    response.delete_cookie('user_id')
-    response.delete_cookie('username')
-    return response
 
+    if session_token:
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM sessions WHERE session_token = ?", (session_token,))
+            conn.commit()
+
+        response.delete_cookie('session_token')
+
+    return response
 
 def home_view(request):
     """
