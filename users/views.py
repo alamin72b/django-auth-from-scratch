@@ -4,7 +4,8 @@ from .helpers import get_authenticated_user,create_session,SESSION_DURATION_MINU
 import bcrypt
 from .db import get_connection
 from .helpers import is_valid_password
-
+import secrets
+from django.core.mail import send_mail
 
 def register_view(request):
     if request.method == 'POST':
@@ -16,33 +17,77 @@ def register_view(request):
         if not username or not email or not password or not confirm_password:
             return render(request, 'register.html', {'error': 'All fields are required'})
 
-        # Check if passwords match
         if password != confirm_password:
             return render(request, 'register.html', {'error': 'Passwords do not match'})
 
-        # Password validation
         valid, message = is_valid_password(password)
         if not valid:
             return render(request, 'register.html', {'error': message})
 
-        # Hash password and insert user (rest of your existing code)
+        # Generate a secure email verification token
+        email_verification_token = secrets.token_urlsafe(24)
+
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
         try:
             with get_connection() as conn:
                 cur = conn.cursor()
                 cur.execute("""
-                    INSERT INTO users (username, email, password_hash)
-                    VALUES (?, ?, ?)
-                """, (username, email, password_hash))
+                    INSERT INTO users (username, email, password_hash, email_verification_token, email_verified)
+                    VALUES (?, ?, ?, ?, 0)
+                """, (username, email, password_hash, email_verification_token))
                 conn.commit()
-            return render(request, 'register.html', {'success': '✅ User registered successfully!'})
+
+            # Compose verification link
+            verification_link = f"http://localhost:8000/verify-email?token={email_verification_token}"
+
+            # Send verification email
+            subject = 'Please verify your email address'
+            message = f'Hi {username},\n\nPlease click the link below to verify your email address:\n{verification_link}\n\nThank you!'
+            from_email = None  # uses DEFAULT_FROM_EMAIL from settings.py
+            recipient_list = [email]
+
+            send_mail(subject, message, from_email, recipient_list, fail_silently=False)
+
+            print(f"[DEBUG] Verification link for {email}: {verification_link}")
+
+            return render(request, 'register.html', {
+                'success': '✅ User registered successfully! Please check your email to verify your account.'
+            })
+
         except Exception as e:
             if 'UNIQUE constraint failed' in str(e):
                 return render(request, 'register.html', {'error': 'Username or email already taken'})
             return render(request, 'register.html', {'error': f'Error: {str(e)}'})
 
     return render(request, 'register.html')
+
+
+def verify_email_view(request):
+    token = request.GET.get('token')
+    if not token:
+        return render(request, 'verify_email.html', {'error': 'Invalid or missing token.'})
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT id, email_verified FROM users WHERE email_verification_token = ?", (token,))
+        user = cur.fetchone()
+
+        if not user:
+            return render(request, 'verify_email.html', {'error': 'Invalid verification token.'})
+
+        user_id, email_verified = user
+
+        if email_verified:
+            return render(request, 'verify_email.html', {'message': 'Email already verified.'})
+
+        cur.execute("UPDATE users SET email_verified = 1 WHERE id = ?", (user_id,))
+        conn.commit()
+
+    return render(request, 'verify_email.html', {'message': 'Your email has been verified successfully!'})
+
+
+
 
 
 def login_view(request):

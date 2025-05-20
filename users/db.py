@@ -70,3 +70,20 @@ def add_is_persistent_column():
             print("Added is_persistent column to sessions table.")
         except Exception as e:
             print("Column might already exist or error:", e)
+
+
+
+def add_email_verification_columns():
+    with get_connection() as conn:
+        cur = conn.cursor()
+        # Add 'email_verification_token' column if it doesn't exist
+        try:
+            cur.execute("ALTER TABLE users ADD COLUMN email_verification_token TEXT")
+        except Exception as e:
+            print("Column email_verification_token might already exist:", e)
+        # Add 'email_verified' column with default 0 (false)
+        try:
+            cur.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0")
+        except Exception as e:
+            print("Column email_verified might already exist:", e)
+        conn.commit()
