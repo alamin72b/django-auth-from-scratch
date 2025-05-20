@@ -87,3 +87,17 @@ def add_email_verification_columns():
         except Exception as e:
             print("Column email_verified might already exist:", e)
         conn.commit()
+
+
+def add_password_reset_columns():
+    with get_connection() as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute("ALTER TABLE users ADD COLUMN reset_token TEXT")
+        except:
+            pass
+        try:
+            cur.execute("ALTER TABLE users ADD COLUMN reset_token_expiry TIMESTAMP")
+        except:
+            pass
+        conn.commit()

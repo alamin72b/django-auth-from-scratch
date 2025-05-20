@@ -7,8 +7,10 @@ class UsersConfig(AppConfig):
 
     def ready(self):
         # Import and run DB initializer
-        from .db import initialize_db, add_column_if_not_exists,initialize_sessions_table,add_is_persistent_column
+        from .db import initialize_db, add_column_if_not_exists,initialize_sessions_table,add_is_persistent_column,add_email_verification_columns,add_password_reset_columns
         initialize_db()
         add_column_if_not_exists()
         initialize_sessions_table()
         add_is_persistent_column()
+        add_email_verification_columns()
+        add_password_reset_columns()

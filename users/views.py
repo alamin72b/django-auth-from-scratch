@@ -6,6 +6,7 @@ from .db import get_connection
 from .helpers import is_valid_password
 import secrets
 from django.core.mail import send_mail
+from datetime import datetime, timedelta
 
 def register_view(request):
     if request.method == 'POST':
@@ -163,3 +164,119 @@ def home_view(request):
         return redirect('/login/')
 
     return render(request, 'home.html', {'username': user['username']})
+
+
+
+def forgot_password_view(request):
+    if request.method == 'POST':
+        email = request.POST.get('email', '').strip()
+
+        if not email:
+            return render(request, 'forgot_password.html', {'error': 'Email is required.'})
+
+        # Check if email exists and is verified
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT id, username, email_verified FROM users WHERE email = ?
+            """, (email,))
+            row = cur.fetchone()
+
+        if not row:
+            return render(request, 'forgot_password.html', {'error': 'No account found with that email.'})
+
+        user_id, username, email_verified = row
+
+        if not email_verified:
+            return render(request, 'forgot_password.html', {'error': 'Please verify your email first.'})
+
+        # Generate token
+        reset_token = secrets.token_urlsafe(32)
+        expiry_time = datetime.now() + timedelta(minutes=30)
+
+        # Save token in DB
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE users SET reset_token = ?, reset_token_expiry = ?
+                WHERE id = ?
+            """, (reset_token, expiry_time, user_id))
+            conn.commit()
+
+        # Compose reset link
+        reset_link = f"http://localhost:8000/reset-password?token={reset_token}"
+
+        # Send email
+        subject = "Password Reset - Your App"
+        message = f"Hi {username},\n\nTo reset your password, click the link below:\n{reset_link}\n\nThis link will expire in 30 minutes.\n\nThanks!"
+        send_mail(subject, message, None, [email])
+
+        print(f"[DEBUG] Password reset link: {reset_link}")  # For dev testing
+
+        return render(request, 'forgot_password.html', {'success': '📩 Reset link sent to your email.'})
+
+    return render(request, 'forgot_password.html')
+
+
+
+
+
+
+
+
+
+
+def reset_password_view(request):
+    token = request.GET.get('token') or request.POST.get('token')
+
+    if not token:
+        return render(request, 'reset_password.html', {'error': 'Reset token is missing or invalid.'})
+
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, reset_token_expiry FROM users WHERE reset_token = ?
+        """, (token,))
+        row = cur.fetchone()
+
+    if not row:
+        return render(request, 'reset_password.html', {'error': 'Invalid or expired token.'})
+
+    user_id, reset_token_expiry = row
+
+    # Check token expiry
+    expiry_dt = datetime.strptime(reset_token_expiry, "%Y-%m-%d %H:%M:%S.%f")
+    if datetime.now() > expiry_dt:
+        return render(request, 'reset_password.html', {'error': 'Token has expired. Please request a new one.'})
+
+    if request.method == 'POST':
+        password = request.POST.get('password', '')
+        confirm_password = request.POST.get('confirm_password', '')
+
+        if password != confirm_password:
+            return render(request, 'reset_password.html', {
+                'error': 'Passwords do not match.', 'token': token
+            })
+
+        valid, message = is_valid_password(password)
+        if not valid:
+            return render(request, 'reset_password.html', {
+                'error': message, 'token': token
+            })
+
+        password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+        with get_connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                UPDATE users
+                SET password_hash = ?, reset_token = NULL, reset_token_expiry = NULL
+                WHERE id = ?
+            """, (password_hash, user_id))
+            conn.commit()
+
+        return render(request, 'reset_password.html', {
+            'success': '✅ Your password has been reset successfully.'
+        })
+
+    return render(request, 'reset_password.html', {'token': token})
