@@ -91,3 +91,15 @@ def is_valid_password(password):
     if not re.search(r'\d', password):
         return False, "Password must contain at least one digit."
     return True, ""
+
+
+
+
+def log_auth_event(user_id, event_type, ip_address):
+    with get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO login_logs (user_id, event_type, ip_address)
+            VALUES (?, ?, ?)
+        """, (user_id, event_type, ip_address))
+        conn.commit()

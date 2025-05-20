@@ -1,12 +1,14 @@
 from django.shortcuts import render, redirect
 from django.http import HttpResponseRedirect
-from .helpers import get_authenticated_user,create_session,SESSION_DURATION_MINUTES,PERSISTENT_SESSION_DURATION_DAYS
+from .helpers import get_authenticated_user,create_session,SESSION_DURATION_MINUTES,PERSISTENT_SESSION_DURATION_DAYS,log_auth_event
 import bcrypt
 from .db import get_connection
 from .helpers import is_valid_password
 import secrets
 from django.core.mail import send_mail
 from datetime import datetime, timedelta
+
+
 
 def register_view(request):
     if request.method == 'POST':
@@ -120,6 +122,9 @@ def login_view(request):
             return render(request, 'login.html', {'error': 'Incorrect password'})
 
         session_token = create_session(user_id, persistent=remember_me)
+          # Log login event here
+        ip_address = request.META.get('REMOTE_ADDR', 'unknown')
+        log_auth_event(user_id, 'login', ip_address)
 
         response = redirect('/home/')
 
@@ -143,6 +148,11 @@ def logout_view(request):
     session_token = request.COOKIES.get('session_token')
     response = HttpResponseRedirect('/login/')
 
+    user = get_authenticated_user(request)
+    if user:
+        ip_address = request.META.get('REMOTE_ADDR', 'unknown')
+        log_auth_event(user['id'], 'logout', ip_address)
+
     if session_token:
         with get_connection() as conn:
             cur = conn.cursor()
@@ -152,6 +162,7 @@ def logout_view(request):
         response.delete_cookie('session_token')
 
     return response
+
 
 def home_view(request):
     """
